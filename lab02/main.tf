@@ -1,60 +1,27 @@
-data "aws_ami" "amazon_linux" {
-  most_recent = true
-  owners      = ["amazon"]
+module "web_server" {
+  source = "./modules/web-server"
 
-  filter {
-    name   = "name"
-    values = ["al2023-ami-2023.*-x86_64"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
+  name_prefix        = local.name_prefix
+  vpc_id             = module.vpc.vpc_id
+  subnet_id          = module.vpc.public_subnets[0]
+  instance_type      = var.instance_type
+  allowed_http_cidrs = var.allowed_http_cidrs
+  root_volume        = var.root_volume
+  tags               = local.common_tags
 }
 
-data "aws_vpc" "default" {
-  default = true
-}
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "~> 5.0"
 
-resource "aws_security_group" "web" {
-  name        = "lab01-web-sg"
-  description = "Allow HTTP inbound and all outbound"
-  vpc_id      = data.aws_vpc.default.id
+  name = "${local.name_prefix}-vpc"
+  cidr = "10.0.0.0/16"
 
-  ingress {
-    description = "HTTP from anywhere"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  azs            = ["${var.aws_region}a", "${var.aws_region}b"]
+  public_subnets = ["10.0.1.0/24", "10.0.2.0/24"]
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  enable_dns_hostnames = true
+  enable_dns_support   = true
 
-  tags = {
-    Name = "lab01-web-sg"
-  }
-}
-
-resource "aws_instance" "web" {
-  ami                    = data.aws_ami.amazon_linux.id
-  instance_type          = "t3.micro"
-  vpc_security_group_ids = [aws_security_group.web.id]
-
-  user_data = <<-EOF
-    #!/bin/bash
-    dnf install -y nginx
-    echo "<h1>Hello from Terraform - $(hostname)</h1>" > /usr/share/nginx/html/index.html
-    systemctl enable --now nginx
-  EOF
-
-  tags = {
-    Name = "lab01-web-server"
-  }
+  tags = local.common_tags
 }
